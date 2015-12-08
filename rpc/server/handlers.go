@@ -287,13 +287,12 @@ func (wsc *WSConnection) readTimeoutRoutine() {
 	}
 }
 
-// Attempt to write response to writeChan and record failures
+// Block trying to write to writeChan until service stops.
 func (wsc *WSConnection) writeRPCResponse(resp RPCResponse) {
 	select {
+	case <-wsc.Quit:
+		return
 	case wsc.writeChan <- resp:
-	default:
-		log.Notice("Stopping connection due to writeChan overflow", "id", wsc.id)
-		wsc.Stop() // writeChan capacity exceeded, error.
 	}
 }
 
@@ -312,7 +311,9 @@ func (wsc *WSConnection) readRoutine() {
 			// wsc.baseConn.SetReadDeadline(time.Now().Add(time.Second * wsReadTimeoutSeconds))
 			// The client may not send anything for a while.
 			// We use `readTimeout` to handle read timeouts.
+			fmt.Print(Blue("<R"))
 			_, in, err := wsc.baseConn.ReadMessage()
+			fmt.Print(Blue(">"))
 			if err != nil {
 				log.Notice("Failed to read from connection", "id", wsc.id)
 				// an error reading the connection,
@@ -379,10 +380,14 @@ func (wsc *WSConnection) readRoutine() {
 				log.Info("WSJSONRPC", "method", request.Method, "args", args, "returns", returns)
 				result, err := unreflectResult(returns)
 				if err != nil {
+					fmt.Print(Red("[W"))
 					wsc.writeRPCResponse(NewRPCResponse(request.ID, nil, err.Error()))
+					fmt.Print(Red("]"))
 					continue
 				} else {
+					fmt.Print(Red("[w"))
 					wsc.writeRPCResponse(NewRPCResponse(request.ID, result, ""))
+					fmt.Print(Red("]"))
 					continue
 				}
 			}
@@ -395,28 +400,40 @@ func (wsc *WSConnection) writeRoutine() {
 	defer wsc.baseConn.Close()
 	var n, err = int(0), error(nil)
 	for {
+		fmt.Print(Magenta("<<"))
 		select {
 		case <-wsc.Quit:
 			return
 		case <-wsc.pingTicker.C:
+			fmt.Print(Magenta("1>"))
+			fmt.Print(Magenta("<A"))
 			err := wsc.baseConn.WriteMessage(websocket.PingMessage, []byte{})
+			fmt.Print(Magenta(">"))
 			if err != nil {
 				log.Error("Failed to write ping message on websocket", "error", err)
 				wsc.Stop()
 				return
 			}
 		case msg := <-wsc.writeChan:
+			fmt.Print(Magenta("2>"))
 			buf := new(bytes.Buffer)
+			fmt.Print(Yellow("{1"))
 			wire.WriteJSON(msg, buf, &n, &err)
+			fmt.Print(Yellow("}"))
 			if err != nil {
 				log.Error("Failed to marshal RPCResponse to JSON", "error", err)
 			} else {
 				wsc.baseConn.SetWriteDeadline(time.Now().Add(time.Second * wsWriteTimeoutSeconds))
-				if err = wsc.baseConn.WriteMessage(websocket.TextMessage, buf.Bytes()); err != nil {
+				fmt.Print(Magenta("<B"))
+				bufBytes := buf.Bytes()
+				fmt.Print(Magenta(".1"))
+				if err = wsc.baseConn.WriteMessage(websocket.TextMessage, bufBytes); err != nil {
+					fmt.Print(Magenta(">"))
 					log.Warn("Failed to write response on websocket", "error", err)
 					wsc.Stop()
 					return
 				}
+				fmt.Print(Magenta(">"))
 			}
 		}
 	}
