@@ -18,16 +18,18 @@ var (
 type Proposal struct {
 	Height           int                     `json:"height"`
 	Round            int                     `json:"round"`
+	BlockHash        []byte                  `json:"block_hash"`
 	BlockPartsHeader PartSetHeader           `json:"block_parts_header"`
 	POLRound         int                     `json:"pol_round"` // -1 if null.
 	Signature        crypto.SignatureEd25519 `json:"signature"`
 }
 
 // polRound: -1 if no polRound.
-func NewProposal(height int, round int, blockPartsHeader PartSetHeader, polRound int) *Proposal {
+func NewProposal(height int, round int, blockHash []byte, blockPartsHeader PartSetHeader, polRound int) *Proposal {
 	return &Proposal{
 		Height:           height,
 		Round:            round,
+		BlockHash:        blockHash,
 		BlockPartsHeader: blockPartsHeader,
 		POLRound:         polRound,
 	}

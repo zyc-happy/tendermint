@@ -10,6 +10,7 @@ import (
 
 	. "github.com/tendermint/go-common"
 	"github.com/tendermint/go-events"
+	"github.com/tendermint/go-p2p"
 	"github.com/tendermint/go-wire"
 	bc "github.com/tendermint/tendermint/blockchain"
 	mempl "github.com/tendermint/tendermint/mempool"
@@ -234,6 +235,8 @@ type ConsensusState struct {
 	wal *WAL
 
 	nSteps int // used for testing to limit the number of transitions the state makes
+
+	Switch *p2p.Switch // for byzantine control
 }
 
 func NewConsensusState(state *sm.State, proxyAppConn proxy.AppConn, blockStore *bc.BlockStore, mempool *mempl.Mempool) *ConsensusState {
@@ -797,9 +800,60 @@ func (cs *ConsensusState) enterPropose(height int, round int) {
 		log.Info("enterPropose: Not our turn to propose", "proposer", cs.Validators.Proposer().Address, "privValidator", cs.privValidator)
 	} else {
 		log.Info("enterPropose: Our turn to propose", "proposer", cs.Validators.Proposer().Address, "privValidator", cs.privValidator)
-		cs.decideProposal(height, round)
+		if config.GetBool("byzantine") {
+			// byzantine user should create two proposals and try to split the vote.
+			// Avoid sending on internalMsgQueue and running consensus state.
+			// TODO: Possibly send prevotes/precommits too?
+
+			// Create a new proposal block from state/txs from the mempool.
+			block1, blockParts1 := cs.createProposalBlock()
+			proposal1 := types.NewProposal(height, round, block1.Hash(), blockParts1.Header(), cs.Votes.POLRound())
+			cs.privValidator.SignProposal(cs.state.ChainID, proposal1) // byzantine doesnt err
+
+			// Create a new proposal block from state/txs from the mempool.
+			block2, blockParts2 := cs.createProposalBlock()
+			proposal2 := types.NewProposal(height, round, block2.Hash(), blockParts2.Header(), cs.Votes.POLRound())
+			cs.privValidator.SignProposal(cs.state.ChainID, proposal2) // byzantine doesnt err
+
+			log.Notice("Byzantine: broadcasting conflicting proposals")
+			// broadcast conflicting proposals/block parts to peers
+			peers := cs.Switch.Peers().List()
+			for i, peer := range peers {
+				if i < len(peers)/2 {
+					go cs.sendProposalAndParts(height, round, peer, proposal1, block1, blockParts1)
+				} else {
+					go cs.sendProposalAndParts(height, round, peer, proposal2, block2, blockParts2)
+				}
+			}
+		} else {
+			cs.decideProposal(height, round)
+		}
+	}
+}
+
+func (cs *ConsensusState) sendProposalAndParts(height, round int, peer *p2p.Peer, proposal *types.Proposal, block *types.Block, parts *types.PartSet) {
+	// proposal
+	msg := &ProposalMessage{Proposal: proposal}
+	peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
+
+	// parts
+	for i := 0; i < parts.Total(); i++ {
+		part := parts.GetPart(i)
+		msg := &BlockPartMessage{
+			Height: height, // This tells peer that this part applies to us.
+			Round:  round,  // This tells peer that this part applies to us.
+			Part:   part,
+		}
+		peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
 	}
 
+	index, _ := cs.Validators.GetByAddress(cs.Validators.Proposer().Address)
+
+	// votes
+	prevote, _ := cs.signVote(types.VoteTypePrevote, block.Hash(), parts.Header())
+	peer.Send(VoteChannel, struct{ ConsensusMessage }{&VoteMessage{index, prevote}})
+	precommit, _ := cs.signVote(types.VoteTypePrecommit, block.Hash(), parts.Header())
+	peer.Send(VoteChannel, struct{ ConsensusMessage }{&VoteMessage{index, precommit}})
 }
 
 func (cs *ConsensusState) decideProposal(height, round int) {
@@ -819,7 +873,7 @@ func (cs *ConsensusState) decideProposal(height, round int) {
 	}
 
 	// Make proposal
-	proposal := types.NewProposal(height, round, blockParts.Header(), cs.Votes.POLRound())
+	proposal := types.NewProposal(height, round, block.Hash(), blockParts.Header(), cs.Votes.POLRound())
 	err := cs.privValidator.SignProposal(cs.state.ChainID, proposal)
 	if err == nil {
 		// Set fields
@@ -840,7 +894,6 @@ func (cs *ConsensusState) decideProposal(height, round int) {
 	} else {
 		log.Warn("enterPropose: Error signing proposal", "height", height, "round", round, "error", err)
 	}
-
 }
 
 // Returns true if the proposal block is complete &&
@@ -939,9 +992,13 @@ func (cs *ConsensusState) enterPrevote(height int, round int) {
 }
 
 func (cs *ConsensusState) doPrevote(height int, round int) {
+	if config.GetBool("byzantine") {
+		return
+	}
+
 	// If a block is locked, prevote that.
 	if cs.LockedBlock != nil {
-		log.Info("enterPrevote: Block was locked")
+		log.Notice("enterPrevote: Block was locked")
 		cs.signAddVote(types.VoteTypePrevote, cs.LockedBlock.Hash(), cs.LockedBlockParts.Header())
 		return
 	}
@@ -1012,14 +1069,18 @@ func (cs *ConsensusState) enterPrecommit(height int, round int) {
 		cs.newStep()
 	}()
 
+	if config.GetBool("byzantine") {
+		return
+	}
+
 	hash, partsHeader, ok := cs.Votes.Prevotes(round).TwoThirdsMajority()
 
 	// If we don't have a polka, we must precommit nil
 	if !ok {
 		if cs.LockedBlock != nil {
-			log.Info("enterPrecommit: No +2/3 prevotes during enterPrecommit while we're locked. Precommitting nil")
+			log.Notice("enterPrecommit: No +2/3 prevotes during enterPrecommit while we're locked. Precommitting nil")
 		} else {
-			log.Info("enterPrecommit: No +2/3 prevotes during enterPrecommit. Precommitting nil.")
+			log.Notice("enterPrecommit: No +2/3 prevotes during enterPrecommit. Precommitting nil.")
 		}
 		cs.signAddVote(types.VoteTypePrecommit, nil, types.PartSetHeader{})
 		return
@@ -1283,7 +1344,21 @@ func (cs *ConsensusState) commitStateUpdateMempool(s *sm.State, block *types.Blo
 //-----------------------------------------------------------------------------
 
 func (cs *ConsensusState) setProposal(proposal *types.Proposal) error {
+	if config.GetBool("byzantine") {
+		index, _ := cs.Validators.GetByAddress(cs.privValidator.Address)
+		peers := cs.Switch.Peers().List()
+		for _, peer := range peers {
+			// votes
+			prevote, _ := cs.signVote(types.VoteTypePrevote, proposal.BlockHash, proposal.BlockPartsHeader)
+			peer.Send(VoteChannel, struct{ ConsensusMessage }{&VoteMessage{index, prevote}})
+			precommit, _ := cs.signVote(types.VoteTypePrecommit, proposal.BlockHash, proposal.BlockPartsHeader)
+			peer.Send(VoteChannel, struct{ ConsensusMessage }{&VoteMessage{index, precommit}})
+		}
+		return nil
+	}
+
 	// Already have one
+	// TODO: possibly catch double proposals
 	if cs.Proposal != nil {
 		return nil
 	}

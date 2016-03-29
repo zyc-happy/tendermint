@@ -153,19 +153,22 @@ func (privVal *PrivValidator) SignVote(chainID string, vote *Vote) error {
 	privVal.mtx.Lock()
 	defer privVal.mtx.Unlock()
 
-	// If height regression, panic
-	if privVal.LastHeight > vote.Height {
-		return errors.New("Height regression in SignVote")
-	}
-	// More cases for when the height matches
-	if privVal.LastHeight == vote.Height {
-		// If round regression, panic
-		if privVal.LastRound > vote.Round {
-			return errors.New("Round regression in SignVote")
+	if !config.GetBool("byzantine") {
+
+		// If height regression, panic
+		if privVal.LastHeight > vote.Height {
+			return errors.New("Height regression in SignVote")
 		}
-		// If step regression, panic
-		if privVal.LastRound == vote.Round && privVal.LastStep > voteToStep(vote) {
-			return errors.New("Step regression in SignVote")
+		// More cases for when the height matches
+		if privVal.LastHeight == vote.Height {
+			// If round regression, panic
+			if privVal.LastRound > vote.Round {
+				return errors.New("Round regression in SignVote")
+			}
+			// If step regression, panic
+			if privVal.LastRound == vote.Round && privVal.LastStep > voteToStep(vote) {
+				return errors.New("Step regression in SignVote")
+			}
 		}
 	}
 
@@ -183,7 +186,7 @@ func (privVal *PrivValidator) SignVote(chainID string, vote *Vote) error {
 func (privVal *PrivValidator) SignProposal(chainID string, proposal *Proposal) error {
 	privVal.mtx.Lock()
 	defer privVal.mtx.Unlock()
-	if privVal.LastHeight < proposal.Height ||
+	if config.GetBool("byzantine") || privVal.LastHeight < proposal.Height ||
 		privVal.LastHeight == proposal.Height && privVal.LastRound < proposal.Round ||
 		privVal.LastHeight == 0 && privVal.LastRound == 0 && privVal.LastStep == stepNone {
 

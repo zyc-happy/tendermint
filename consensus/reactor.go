@@ -55,6 +55,7 @@ func (conR *ConsensusReactor) OnStart() error {
 	// upon their respective events (ie. uses evsw)
 	conR.registerEventCallbacks()
 
+	conR.conS.Switch = conR.Switch // for byzantine control
 	if !conR.fastSync {
 		_, err := conR.conS.Start()
 		if err != nil {

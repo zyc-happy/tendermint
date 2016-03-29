@@ -82,6 +82,8 @@ func GetConfig(rootDir string) cfg.Config {
 	mapConfig.SetDefault("mempool_recheck_empty", true)
 	mapConfig.SetDefault("mempool_broadcast", true)
 
+	mapConfig.SetDefault("byzantine", false)
+
 	return mapConfig
 }
 
