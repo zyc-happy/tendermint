@@ -350,7 +350,7 @@ OUTER_LOOP:
 					// TODO: but what if Send fails?
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, setIndex)
 				})
-				log.Notice("picked index", "index", index, "peer", peer)
+				// log.Notice("picked index", "index", index, "peer", peer)
 				part := rs.ProposalBlockParts.GetPart(index)
 				msg := &BlockPartMessage{
 					Height: rs.Height, // This tells peer that this part applies to us.
