@@ -81,6 +81,7 @@ func GetConfig(rootDir string) cfg.Config {
 	mapConfig.SetDefault("mempool_recheck", true)
 	mapConfig.SetDefault("mempool_recheck_empty", true)
 	mapConfig.SetDefault("mempool_broadcast", true)
+	mapConfig.SetDefault("block_part_size", 65536)
 
 	return mapConfig
 }

@@ -346,7 +346,11 @@ OUTER_LOOP:
 			//log.Info("ProposalBlockParts matched", "blockParts", prs.ProposalBlockParts)
 			possibleParts := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy())
 			if !possibleParts.IsEmpty() {
-				index := rs.ProposalBlockParts.Abundance.PickRarest(possibleParts)
+				index := rs.ProposalBlockParts.Abundance.PickRarest(possibleParts, func(setIndex int) {
+					// TODO: but what if Send fails?
+					ps.SetHasProposalBlockPart(prs.Height, prs.Round, setIndex)
+				})
+				log.Notice("picked index", "index", index, "peer", peer)
 				part := rs.ProposalBlockParts.GetPart(index)
 				msg := &BlockPartMessage{
 					Height: rs.Height, // This tells peer that this part applies to us.
@@ -354,8 +358,6 @@ OUTER_LOOP:
 					Part:   part,
 				}
 				peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
-				// TODO: what if Send fails?
-				conR.updateBlockPartAbundance(ps, prs.Height, prs.Round, index)
 				continue OUTER_LOOP
 			}
 		}

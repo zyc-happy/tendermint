@@ -14,10 +14,6 @@ import (
 	"github.com/tendermint/go-wire"
 )
 
-const (
-	partSize = 65536 // 64KB ...  4096 // 4KB
-)
-
 var (
 	ErrPartSetUnexpectedIndex = errors.New("Error part set unexpected index")
 	ErrPartSetInvalidProof    = errors.New("Error part set invalid proof")
@@ -99,6 +95,7 @@ type PartSet struct {
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 func NewPartSetFromData(data []byte) *PartSet {
 	// divide data into 4kb parts.
+	partSize := config.GetInt("block_part_size")
 	total := (len(data) + partSize - 1) / partSize
 	parts := make([]*Part, total)
 	parts_ := make([]merkle.Hashable, total)
@@ -319,21 +316,26 @@ func (pc *PartCounts) IncrementIndex(index int) {
 	pc.counts[index] += 1
 }
 
-// Pick the first index from the bit array with the lowest count
-// Assumes bA.Size() == len(pc.counts)
-func (pc *PartCounts) PickRarest(bA *BitArray) int {
+// Pick the first index from the bit array with the lowest count, increment the index,
+// and pass it to the setFunc.
+// Index must be incremented so that multiple concurrent calls don't pick the same value,
+// and passed to setFunc so the abundance doesnt get accidentally incremented again
+// Assumes possibleParts.Size() == len(pc.counts)
+func (pc *PartCounts) PickRarest(possibleParts *BitArray, setFunc func(int)) int {
 	pc.mtx.Lock()
 	defer pc.mtx.Unlock()
 
 	var lowest uint32 = 2 << 30
 	var lowestIndex int
 	for i, count := range pc.counts {
-		if bA.GetIndex(i) {
+		if possibleParts.GetIndex(i) {
 			if count < lowest {
 				lowest = count
 				lowestIndex = i
 			}
 		}
 	}
+	pc.counts[lowestIndex] += 1
+	setFunc(lowestIndex)
 	return lowestIndex
 }

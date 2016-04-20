@@ -9,6 +9,7 @@ import (
 )
 
 func TestBasicPartSet(t *testing.T) {
+	partSize := config.GetInt("block_part_size")
 
 	// Construct random data of size partSize * 100
 	data := RandBytes(partSize * 100)
@@ -59,6 +60,7 @@ func TestBasicPartSet(t *testing.T) {
 }
 
 func TestWrongProof(t *testing.T) {
+	partSize := config.GetInt("block_part_size")
 
 	// Construct random data of size partSize * 100
 	data := RandBytes(partSize * 100)
