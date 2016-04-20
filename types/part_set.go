@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 
 	"golang.org/x/crypto/ripemd160"
@@ -290,11 +291,14 @@ func (ps *PartSet) StringShort() string {
 type PartCounts struct {
 	mtx    sync.Mutex
 	counts []uint32
+
+	lowestIndices []int // allocated once, used to randomly choose one of the lowest indices each time
 }
 
 func NewPartCounts(size int) *PartCounts {
 	return &PartCounts{
-		counts: make([]uint32, size),
+		counts:        make([]uint32, size),
+		lowestIndices: make([]int, size),
 	}
 }
 
@@ -325,15 +329,26 @@ func (pc *PartCounts) PickRarest(possibleParts *BitArray, setFunc func(int)) int
 	pc.mtx.Lock()
 	defer pc.mtx.Unlock()
 
-	var lowest uint32 = 2 << 30
-	var lowestIndex int
+	var lowest uint32 = 2 << 30 // lowest abundance
+	var lowestCount int         // degeneracy of the lowest abundance
 	for i, count := range pc.counts {
 		if possibleParts.GetIndex(i) {
 			if count < lowest {
 				lowest = count
-				lowestIndex = i
+				pc.lowestIndices[0] = i
+				lowestCount = 1
+			} else if count == lowest {
+				pc.lowestIndices[lowestCount] = i
+				lowestCount += 1
 			}
 		}
+	}
+	var lowestIndex int
+	if lowestCount > 1 {
+		// pick a random one
+		lowestIndex = pc.lowestIndices[rand.Intn(lowestCount)]
+	} else {
+		lowestIndex = pc.lowestIndices[0]
 	}
 	pc.counts[lowestIndex] += 1
 	setFunc(lowestIndex)

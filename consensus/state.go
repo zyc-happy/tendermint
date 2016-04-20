@@ -797,7 +797,7 @@ func (cs *ConsensusState) enterPropose(height int, round int) {
 	if !bytes.Equal(cs.Validators.Proposer().Address, cs.privValidator.Address) {
 		log.Info("enterPropose: Not our turn to propose", "proposer", cs.Validators.Proposer().Address, "privValidator", cs.privValidator)
 	} else {
-		log.Info("enterPropose: Our turn to propose", "proposer", cs.Validators.Proposer().Address, "privValidator", cs.privValidator)
+		log.Notice("enterPropose: Our turn to propose", "proposer", cs.Validators.Proposer().Address, "privValidator", cs.privValidator)
 		cs.decideProposal(height, round)
 	}
 
