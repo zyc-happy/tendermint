@@ -91,6 +91,8 @@ type PartSet struct {
 	parts         []*Part
 	partsBitArray *BitArray
 	count         int
+
+	Abundance *PartCounts // how many peers have each part
 }
 
 // Returns an immutable, full PartSet from the data bytes.
@@ -121,6 +123,7 @@ func NewPartSetFromData(data []byte) *PartSet {
 		parts:         parts,
 		partsBitArray: partsBitArray,
 		count:         total,
+		Abundance:     NewPartCounts(total),
 	}
 }
 
@@ -132,6 +135,7 @@ func NewPartSetFromHeader(header PartSetHeader) *PartSet {
 		parts:         make([]*Part, header.Total),
 		partsBitArray: NewBitArray(header.Total),
 		count:         0,
+		Abundance:     NewPartCounts(header.Total),
 	}
 }
 
@@ -280,4 +284,56 @@ func (ps *PartSet) StringShort() string {
 	} else {
 		return fmt.Sprintf("(%v of %v)", ps.Count(), ps.Total())
 	}
+}
+
+//--------------------------------------
+// for gossiping parts rarest first
+
+// TODO: access individual counts atomically instead
+type PartCounts struct {
+	mtx    sync.Mutex
+	counts []uint32
+}
+
+func NewPartCounts(size int) *PartCounts {
+	return &PartCounts{
+		counts: make([]uint32, size),
+	}
+}
+
+// check() checks that the peer is hearing about the part for the first time.
+// the check/update must happen atomically on PartCounts since peer parts
+// are updated concurrently
+func (pc *PartCounts) CheckAndIncrementIndex(index int, check func() bool) {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	if check() {
+		pc.counts[index] += 1
+	}
+}
+
+// panics if index >= len(pc.counts)
+func (pc *PartCounts) IncrementIndex(index int) {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	pc.counts[index] += 1
+}
+
+// Pick the first index from the bit array with the lowest count
+// Assumes bA.Size() == len(pc.counts)
+func (pc *PartCounts) PickRarest(bA *BitArray) int {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+
+	var lowest uint32 = 2 << 30
+	var lowestIndex int
+	for i, count := range pc.counts {
+		if bA.GetIndex(i) {
+			if count < lowest {
+				lowest = count
+				lowestIndex = i
+			}
+		}
+	}
+	return lowestIndex
 }

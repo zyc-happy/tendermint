@@ -182,7 +182,10 @@ func (conR *ConsensusReactor) Receive(chID byte, src *p2p.Peer, msgBytes []byte)
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 		case *BlockPartMessage:
-			ps.SetHasProposalBlockPart(msg.Height, msg.Round, msg.Part.Index)
+			// NOTE: this may update abundance before checking part validity,
+			// enabling an adversary to mess with rarest first.
+			// can solve by tracking peer states block parts bitarrays in ConsensusState
+			conR.updateBlockPartAbundance(ps, msg.Height, msg.Round, msg.Part.Index)
 			conR.conS.peerMsgQueue <- msgInfo{msg, src.Key}
 		default:
 			log.Warn(Fmt("Unknown message type %v", reflect.TypeOf(msg)))
@@ -227,6 +230,16 @@ func (conR *ConsensusReactor) SetPrivValidator(priv *types.PrivValidator) {
 func (conR *ConsensusReactor) SetEventSwitch(evsw *events.EventSwitch) {
 	conR.evsw = evsw
 	conR.conS.SetEventSwitch(evsw)
+}
+
+func (conR *ConsensusReactor) updateBlockPartAbundance(ps *PeerState, height, round, index int) {
+	blockParts := conR.conS.GetRoundState().ProposalBlockParts
+	if blockParts != nil {
+		blockParts.Abundance.CheckAndIncrementIndex(index, func() bool {
+			// abundance will increment if we didn't know peer had part until now
+			return ps.SetHasProposalBlockPart(height, round, index)
+		})
+	}
 }
 
 //--------------------------------------
@@ -312,6 +325,9 @@ func (conR *ConsensusReactor) sendNewRoundStepMessage(peer *p2p.Peer) {
 	}
 }
 
+// block parts are gossiped rarest first.
+// a part's abundance is updated atomically here when we send a part,
+// or in Receive, the first time we hear a peer has it,
 func (conR *ConsensusReactor) gossipDataRoutine(peer *p2p.Peer, ps *PeerState) {
 	log := log.New("peer", peer)
 
@@ -328,7 +344,9 @@ OUTER_LOOP:
 		// Send proposal Block parts?
 		if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartsHeader) {
 			//log.Info("ProposalBlockParts matched", "blockParts", prs.ProposalBlockParts)
-			if index, ok := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy()).PickRandom(); ok {
+			possibleParts := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy())
+			if !possibleParts.IsEmpty() {
+				index := rs.ProposalBlockParts.Abundance.PickRarest(possibleParts)
 				part := rs.ProposalBlockParts.GetPart(index)
 				msg := &BlockPartMessage{
 					Height: rs.Height, // This tells peer that this part applies to us.
@@ -336,7 +354,8 @@ OUTER_LOOP:
 					Part:   part,
 				}
 				peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
-				ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+				// TODO: what if Send fails?
+				conR.updateBlockPartAbundance(ps, prs.Height, prs.Round, index)
 				continue OUTER_LOOP
 			}
 		}
@@ -348,7 +367,7 @@ OUTER_LOOP:
 				// Ensure that the peer's PartSetHeader is correct
 				blockMeta := conR.blockStore.LoadBlockMeta(prs.Height)
 				if !blockMeta.PartsHeader.Equals(prs.ProposalBlockPartsHeader) {
-					log.Info("Peer ProposalBlockPartsHeader mismatch, sleeping",
+					log.Warn("Peer ProposalBlockPartsHeader mismatch, sleeping",
 						"peerHeight", prs.Height, "blockPartsHeader", blockMeta.PartsHeader, "peerBlockPartsHeader", prs.ProposalBlockPartsHeader)
 					time.Sleep(peerGossipSleepDuration)
 					continue OUTER_LOOP
@@ -368,6 +387,7 @@ OUTER_LOOP:
 					Part:   part,
 				}
 				peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
+				// no need to track abundance for previous heights - they should be well replicated!
 				ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 				continue OUTER_LOOP
 			} else {
@@ -609,15 +629,20 @@ func (ps *PeerState) SetHasProposal(proposal *types.Proposal) {
 	ps.ProposalPOL = nil // Nil until ProposalPOLMessage received.
 }
 
-func (ps *PeerState) SetHasProposalBlockPart(height int, round int, index int) {
+// returns true if correct height/round and the peer did not already have the part
+func (ps *PeerState) SetHasProposalBlockPart(height int, round int, index int) bool {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
 	if ps.Height != height || ps.Round != round {
-		return
+		return false
+	}
+	if ps.ProposalBlockParts.GetIndex(index) {
+		return false
 	}
 
 	ps.ProposalBlockParts.SetIndex(index, true)
+	return true
 }
 
 // Convenience function to send vote to peer.

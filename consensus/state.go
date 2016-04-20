@@ -657,6 +657,7 @@ func (cs *ConsensusState) handleMsg(mi msgInfo, rs RoundState) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		_, err = cs.addProposalBlockPart(msg.Height, msg.Part, peerKey != "")
 		if err != nil && msg.Round != cs.Round {
+			// not really an error to receive block parts from a different round
 			err = nil
 		}
 	case *VoteMessage:
