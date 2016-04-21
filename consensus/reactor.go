@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"sync"
 	"time"
 
@@ -338,6 +339,7 @@ OUTER_LOOP:
 			log.Notice(Fmt("Stopping gossipDataRoutine for %v.", peer))
 			return
 		}
+
 		rs := conR.conS.GetRoundState()
 		prs := ps.GetRoundState()
 
@@ -358,6 +360,10 @@ OUTER_LOOP:
 					Part:   part,
 				}
 				peer.Send(DataChannel, struct{ ConsensusMessage }{msg})
+
+				// so we dont send too many parts in a row to one peer
+				runtime.Gosched()
+
 				continue OUTER_LOOP
 			}
 		}
