@@ -271,7 +271,7 @@ func (commit *Commit) Round() int {
 }
 
 // Type returns the vote type of the commit, which is always VoteTypePrecommit
-func (commit *Commit) Type() byte {
+func (commit *Commit) Type() VoteType {
 	return VoteTypePrecommit
 }
 

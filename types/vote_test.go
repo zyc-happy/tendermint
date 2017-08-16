@@ -10,7 +10,7 @@ func TestVoteSignable(t *testing.T) {
 		ValidatorIndex:   56789,
 		Height:           12345,
 		Round:            23456,
-		Type:             byte(2),
+		Type:             VoteTypePrecommit,
 		BlockID: BlockID{
 			Hash: []byte("hash"),
 			PartsHeader: PartSetHeader{

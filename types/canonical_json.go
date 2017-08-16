@@ -28,7 +28,7 @@ type CanonicalJSONVote struct {
 	BlockID CanonicalJSONBlockID `json:"block_id"`
 	Height  int                  `json:"height"`
 	Round   int                  `json:"round"`
-	Type    byte                 `json:"type"`
+	Type    VoteType             `json:"type"`
 }
 
 type CanonicalJSONHeartbeat struct {

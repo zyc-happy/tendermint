@@ -47,7 +47,7 @@ type VoteSet struct {
 	chainID string
 	height  int
 	round   int
-	type_   byte
+	type_   VoteType
 
 	mtx           sync.Mutex
 	valSet        *ValidatorSet
@@ -60,7 +60,7 @@ type VoteSet struct {
 }
 
 // Constructs a new VoteSet struct used to accumulate votes for given height/round.
-func NewVoteSet(chainID string, height int, round int, type_ byte, valSet *ValidatorSet) *VoteSet {
+func NewVoteSet(chainID string, height int, round int, type_ VoteType, valSet *ValidatorSet) *VoteSet {
 	if height == 0 {
 		PanicSanity("Cannot make VoteSet for height == 0, doesn't make sense.")
 	}
@@ -99,9 +99,9 @@ func (voteSet *VoteSet) Round() int {
 	}
 }
 
-func (voteSet *VoteSet) Type() byte {
+func (voteSet *VoteSet) Type() VoteType {
 	if voteSet == nil {
-		return 0x00
+		return nil
 	} else {
 		return voteSet.type_
 	}
@@ -519,7 +519,7 @@ func (vs *blockVotes) getByIndex(index int) *Vote {
 type VoteSetReader interface {
 	Height() int
 	Round() int
-	Type() byte
+	Type() VoteType
 	Size() int
 	BitArray() *BitArray
 	GetByIndex(int) *Vote

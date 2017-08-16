@@ -11,7 +11,7 @@ import (
 )
 
 // NOTE: privValidators are in order
-func randVoteSet(height int, round int, type_ byte, numValidators int, votingPower int64) (*VoteSet, *ValidatorSet, []*PrivValidator) {
+func randVoteSet(height int, round int, type_ VoteType, numValidators int, votingPower int64) (*VoteSet, *ValidatorSet, []*PrivValidator) {
 	valSet, privValidators := RandValidatorSet(numValidators, votingPower)
 	return NewVoteSet("test_chain_id", height, round, type_, valSet), valSet, privValidators
 }
@@ -39,7 +39,7 @@ func withRound(vote *Vote, round int) *Vote {
 }
 
 // Convenience: Return new vote with different type
-func withType(vote *Vote, type_ byte) *Vote {
+func withType(vote *Vote, type_ VoteType) *Vote {
 	vote = vote.Copy()
 	vote.Type = type_
 	return vote

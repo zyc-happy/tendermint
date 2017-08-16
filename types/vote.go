@@ -28,31 +28,34 @@ func (err *ErrVoteConflictingVotes) Error() string {
 	return "Conflicting votes"
 }
 
-// Types of votes
-// TODO Make a new type "VoteType"
-const (
-	VoteTypePrevote   = byte(0x01)
-	VoteTypePrecommit = byte(0x02)
-)
-
-func IsVoteTypeValid(type_ byte) bool {
-	switch type_ {
-	case VoteTypePrevote:
-		return true
-	case VoteTypePrecommit:
-		return true
-	default:
-		return false
-	}
+// VoteType is an interface that is only implemented by specific vote types
+type VoteType interface {
+	_assertIsVoteType()
 }
 
-// Represents a prevote, precommit, or commit vote from validators for consensus.
+type (
+	voteTypePrevote   byte
+	voteTypePrecommit byte
+)
+
+func (_ voteTypePrevote) _assertIsVoteType() {}
+
+func (_ voteTypePrecommit) _assertIsVoteType() {}
+
+// There are two implementations of VoteType:
+// VoteTypePrevote (0x01) and VoteTypePrecommit (0x02)
+const (
+	VoteTypePrevote   voteTypePrevote   = 0x01
+	VoteTypePrecommit voteTypePrecommit = 0x02
+)
+
+// Vote represents a prevote, precommit, or commit vote from validators for consensus.
 type Vote struct {
 	ValidatorAddress data.Bytes       `json:"validator_address"`
 	ValidatorIndex   int              `json:"validator_index"`
 	Height           int              `json:"height"`
 	Round            int              `json:"round"`
-	Type             byte             `json:"type"`
+	Type             VoteType         `json:"type"`
 	BlockID          BlockID          `json:"block_id"` // zero if vote is nil.
 	Signature        crypto.Signature `json:"signature"`
 }
