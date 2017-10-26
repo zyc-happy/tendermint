@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,13 +22,13 @@ func TestGenLoadValidator(t *testing.T) {
 	privVal := GenPrivValidatorFS(tempFilePath)
 
 	height := 100
-	privVal.LastHeight = height
+	privVal.Info.LastHeight = height
 	privVal.Save()
-	addr := privVal.GetAddress()
+	addr := privVal.Address()
 
 	privVal = LoadPrivValidatorFS(tempFilePath)
-	assert.Equal(addr, privVal.GetAddress(), "expected privval addr to be the same")
-	assert.Equal(height, privVal.LastHeight, "expected privval.LastHeight to have been saved")
+	assert.Equal(addr, privVal.Address(), "expected privval addr to be the same")
+	assert.Equal(height, privVal.Info.LastHeight, "expected privval.Info.LastHeight to have been saved")
 }
 
 func TestLoadOrGenValidator(t *testing.T) {
@@ -36,9 +37,9 @@ func TestLoadOrGenValidator(t *testing.T) {
 	_, tempFilePath := cmn.Tempfile("priv_validator_")
 	os.Remove(tempFilePath)
 	privVal := LoadOrGenPrivValidatorFS(tempFilePath)
-	addr := privVal.GetAddress()
+	addr := privVal.Address()
 	privVal = LoadOrGenPrivValidatorFS(tempFilePath)
-	assert.Equal(addr, privVal.GetAddress(), "expected privval addr to be the same")
+	assert.Equal(addr, privVal.Address(), "expected privval addr to be the same")
 }
 
 func TestUnmarshalValidator(t *testing.T) {
@@ -79,9 +80,12 @@ func TestUnmarshalValidator(t *testing.T) {
 	require.Nil(err, "%+v", err)
 
 	// make sure the values match
-	assert.EqualValues(addrBytes, val.GetAddress())
-	assert.EqualValues(pubKey, val.GetPubKey())
-	assert.EqualValues(privKey, val.PrivKey)
+	assert.EqualValues(addrBytes, val.Address())
+	assert.EqualValues(pubKey, val.PubKey())
+	fmt.Println(serialized)
+	fmt.Println(val.Signer)
+	fmt.Println(reflect.TypeOf(val.Signer))
+	assert.EqualValues(privKey, val.Signer.(*DefaultSigner).PrivKey)
 
 	// export it and make sure it is the same
 	out, err := json.Marshal(val)
@@ -101,7 +105,7 @@ func TestSignVote(t *testing.T) {
 	voteType := VoteTypePrevote
 
 	// sign a vote for first time
-	vote := newVote(privVal.Address, 0, height, round, voteType, block1)
+	vote := newVote(privVal.Address(), 0, height, round, voteType, block1)
 	err := privVal.SignVote("mychainid", vote)
 	assert.NoError(err, "expected no error signing vote")
 
@@ -111,10 +115,10 @@ func TestSignVote(t *testing.T) {
 
 	// now try some bad votes
 	cases := []*Vote{
-		newVote(privVal.Address, 0, height, round-1, voteType, block1),   // round regression
-		newVote(privVal.Address, 0, height-1, round, voteType, block1),   // height regression
-		newVote(privVal.Address, 0, height-2, round+4, voteType, block1), // height regression and different round
-		newVote(privVal.Address, 0, height, round, voteType, block2),     // different block
+		newVote(privVal.Address(), 0, height, round-1, voteType, block1),   // round regression
+		newVote(privVal.Address(), 0, height-1, round, voteType, block1),   // height regression
+		newVote(privVal.Address(), 0, height-2, round+4, voteType, block1), // height regression and different round
+		newVote(privVal.Address(), 0, height, round, voteType, block2),     // different block
 	}
 
 	for _, c := range cases {
