@@ -57,9 +57,9 @@ func GetWithProofOptions(path string, key []byte, opts rpcclient.ABCIQueryOption
 	if len(resp.Key) == 0 || len(resp.Proof) == 0 {
 		return nil, nil, ErrNoData()
 	}
-	if resp.Height == 0 {
+	/*if resp.Height == 0 {
 		return nil, nil, errors.New("Height returned is zero")
-	}
+	}*/
 
 	// AppHash for height H is in header H+1
 	commit, err := GetCertifiedCommit(resp.Height+1, node, cert)
@@ -67,6 +67,10 @@ func GetWithProofOptions(path string, key []byte, opts rpcclient.ABCIQueryOption
 		return nil, nil, err
 	}
 
+	if opts.Trusted {
+		return &ctypes.ResultABCIQuery{resp}, nil, nil
+
+	}
 	if len(resp.Value) > 0 {
 		// The key was found, construct a proof of existence.
 		eproof, err := iavl.ReadKeyExistsProof(resp.Proof)
