@@ -5,11 +5,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/tendermint/tendermint/types"
+	cmn "github.com/tendermint/tmlibs/common"
 
 	"github.com/tendermint/tendermint/lite"
 	"github.com/tendermint/tendermint/lite/errors"
+	"github.com/tendermint/tendermint/types"
 )
 
 // TestDynamicCert just makes sure it still works like StaticCert
@@ -62,22 +62,36 @@ func TestDynamicCert(t *testing.T) {
 
 // TestDynamicUpdate makes sure we update safely and sanely
 func TestDynamicUpdate(t *testing.T) {
-	assert, require := assert.New(t), require.New(t)
+	var (
+		assert, require = assert.New(t), require.New(t)
 
-	chainID := "test-dyno-up"
-	keys := lite.GenValKeys(5)
-	vals := keys.ToValidators(20, 0)
-	cert := lite.NewDynamicCertifier(chainID, vals, 40)
+		chainID = cmn.RandStr(12)
+		keys    = lite.GenValKeys(5)
+		vals    = keys.ToValidators(20, 0)
+		cert    = lite.NewDynamicCertifier(chainID, vals, 40)
 
-	// one valid block to give us a sense of time
-	h := int64(100)
-	good := keys.GenCommit(chainID, h, nil, vals, []byte("foo"), []byte("params"), []byte("results"), 0, len(keys))
-	err := cert.Certify(good)
-	require.Nil(err, "%+v", err)
+		// one valid block to give us a sense of time
+		height = int64(100)
+		good   = keys.GenCommit(
+			chainID,
+			height,
+			nil,
+			vals,
+			[]byte("foo"),
+			[]byte("params"),
+			[]byte("results"),
+			0,
+			len(keys),
+		)
+	)
+
+	require.NoError(cert.Certify(good))
 
 	// some new sets to try later
-	keys2 := keys.Extend(2)
-	keys3 := keys2.Extend(4)
+	var (
+		keys2 = keys.Extend(2)
+		keys3 = keys2.Extend(4)
+	)
 
 	// we try to update with some blocks
 	cases := []struct {
@@ -89,28 +103,30 @@ func TestDynamicUpdate(t *testing.T) {
 		changed     bool // true -> expect too much change error
 	}{
 		// same validator set, well signed, of course it is okay
-		{keys, vals, h + 10, 0, len(keys), true, false},
+		{keys, vals, height + 10, 0, len(keys), true, false},
 		// same validator set, poorly signed, fails
-		{keys, vals, h + 20, 2, len(keys), false, false},
+		{keys, vals, height + 20, 2, len(keys), false, false},
 
 		// shift the power a little, works if properly signed
-		{keys, keys.ToValidators(10, 0), h + 30, 1, len(keys), true, false},
+		{keys, keys.ToValidators(10, 0), height + 30, 1, len(keys), true, false},
 		// but not on a poor signature
-		{keys, keys.ToValidators(10, 0), h + 40, 2, len(keys), false, false},
+		{keys, keys.ToValidators(10, 0), height + 40, 2, len(keys), false, false},
 		// and not if it was in the past
-		{keys, keys.ToValidators(10, 0), h + 25, 0, len(keys), false, false},
+		{keys, keys.ToValidators(10, 0), height + 25, 0, len(keys), false, false},
 
 		// let's try to adjust to a whole new validator set (we have 5/7 of the votes)
-		{keys2, keys2.ToValidators(10, 0), h + 33, 0, len(keys2), true, false},
+		{keys2, keys2.ToValidators(10, 0), height + 33, 0, len(keys2), true, false},
 
 		// properly signed but too much change, not allowed (only 7/11 validators known)
-		{keys3, keys3.ToValidators(10, 0), h + 50, 0, len(keys3), false, true},
+		{keys3, keys3.ToValidators(10, 0), height + 50, 0, len(keys3), false, true},
 	}
 
 	for _, tc := range cases {
 		fc := tc.keys.GenFullCommit(chainID, tc.height, nil, tc.vals,
 			[]byte("bar"), []byte("params"), []byte("results"), tc.first, tc.last)
+
 		err := cert.Update(fc)
+
 		if tc.proper {
 			assert.Nil(err, "%d: %+v", tc.height, err)
 			// we update last seen height

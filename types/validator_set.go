@@ -285,8 +285,7 @@ func (valSet *ValidatorSet) VerifyCommit(chainID string, blockID BlockID, height
 // That means that:
 // * 10% of the valset can't just declare themselves kings
 // * If the validator set is 3x old size, we need more proof to trust
-func (valSet *ValidatorSet) VerifyCommitAny(newSet *ValidatorSet, chainID string,
-	blockID BlockID, height int64, commit *Commit) error {
+func (valSet *ValidatorSet) VerifyCommitAny(newSet *ValidatorSet, chainID string, blockID BlockID, height int64, commit *Commit) error {
 
 	if newSet.Size() != len(commit.Precommits) {
 		return errors.Errorf("Invalid commit -- wrong set size: %v vs %v", newSet.Size(), len(commit.Precommits))

@@ -22,8 +22,12 @@ type DynamicCertifier struct {
 	lastHeight int64
 }
 
-// NewDynamic returns a new dynamic certifier.
-func NewDynamicCertifier(chainID string, vals *types.ValidatorSet, height int64) *DynamicCertifier {
+// NewDynamicCertifier returns a new dynamic certifier.
+func NewDynamicCertifier(
+	chainID string,
+	vals *types.ValidatorSet,
+	height int64,
+) *DynamicCertifier {
 	return &DynamicCertifier{
 		cert:       NewStaticCertifier(chainID, vals),
 		lastHeight: height,
@@ -51,8 +55,8 @@ func (dc *DynamicCertifier) LastHeight() int64 {
 	return dc.lastHeight
 }
 
-// Certify will verify whether the commit is valid and will update the height if it is or return an
-// error if it is not.
+// Certify will verify whether the commit is valid and will update the height
+// if it is or return an error if it is not.
 // Implements Certifier.
 func (dc *DynamicCertifier) Certify(check Commit) error {
 	err := dc.cert.Certify(check)
@@ -66,31 +70,40 @@ func (dc *DynamicCertifier) Certify(check Commit) error {
 // Update will verify if this is a valid change and update
 // the certifying validator set if safe to do so.
 //
-// Returns an error if update is impossible (invalid proof or IsTooMuchChangeErr)
+// Returns an error if update is impossible (invalid proof or
+// IsTooMuchChangeErr)
 func (dc *DynamicCertifier) Update(fc FullCommit) error {
+	var (
+		chainID = dc.ChainID()
+		commit  = fc.Commit.Commit
+		height  = fc.Height()
+	)
+
 	// ignore all checkpoints in the past -> only to the future
-	h := fc.Height()
-	if h <= dc.lastHeight {
+	if height <= dc.lastHeight {
 		return liteErr.ErrPastTime()
 	}
 
-	// first, verify if the input is self-consistent....
-	err := fc.ValidateBasic(dc.ChainID())
-	if err != nil {
+	// Verify the input is self-consistent.
+	if err := fc.ValidateBasic(chainID); err != nil {
 		return err
 	}
 
 	// now, make sure not too much change... meaning this commit
 	// would be approved by the currently known validator set
 	// as well as the new set
-	commit := fc.Commit.Commit
-	err = dc.Validators().VerifyCommitAny(fc.Validators, dc.ChainID(), commit.BlockID, h, commit)
-	if err != nil {
+	if err := dc.Validators().VerifyCommitAny(
+		fc.Validators,
+		chainID,
+		commit.BlockID,
+		height,
+		commit,
+	); err != nil {
 		return liteErr.ErrTooMuchChange()
 	}
 
-	// looks good, we can update
-	dc.cert = NewStaticCertifier(dc.ChainID(), fc.Validators)
-	dc.lastHeight = h
+	dc.cert = NewStaticCertifier(chainID, fc.Validators)
+	dc.lastHeight = height
+
 	return nil
 }
