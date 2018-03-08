@@ -122,8 +122,17 @@ func TestDynamicUpdate(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		fc := tc.keys.GenFullCommit(chainID, tc.height, nil, tc.vals,
-			[]byte("bar"), []byte("params"), []byte("results"), tc.first, tc.last)
+		fc := tc.keys.GenFullCommit(
+			chainID,
+			tc.height,
+			nil,
+			tc.vals,
+			[]byte("bar"),
+			[]byte("params"),
+			[]byte("results"),
+			tc.first,
+			tc.last,
+		)
 
 		err := cert.Update(fc)
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	crypto "github.com/tendermint/go-crypto"
 	wire "github.com/tendermint/tendermint/wire"
@@ -368,4 +369,174 @@ func TestValidatorSetVerifyCommit(t *testing.T) {
 	// test a good one
 	err := vset.VerifyCommit(chainID, blockID, height, commit)
 	assert.Nil(t, err)
+}
+
+// func (valSet *ValidatorSet) VerifyCommitAny(
+// 	newSet *ValidatorSet,
+// 	chainID string,
+// 	blockID BlockID,
+// 	height int64,
+// 	commit *Commit,
+// ) error {
+func TestValidatorSetVerifyCommitAny(t *testing.T) {
+	var (
+		assert, _ = assert.New(t), require.New(t)
+		chainID   = cmn.RandStr(36)
+		keys0     = testGenValKeys(5)
+		vals0     = testKeysToValSet(keys0, 20, 0)
+
+		// keys1 = append(keys0, testGenValKeys(2)...)
+		// vals1 = testKeysToValSet(keys1, 10, 0)
+
+		// keys2 = append(keys1, testGenValKeys(4)...)
+		// vals2 = testKeysToValSet(keys2, 10, 0)
+
+		height int64 = 100
+	)
+
+	cs := []struct {
+		keys        []crypto.PrivKey
+		vals        *ValidatorSet
+		height      int64
+		first, last int  // who actually signs
+		proper      bool // true -> expect no error
+		changed     bool // true -> expect too much change error
+	}{
+		// same validator set, well signed, of course it is okay
+		{keys0, vals0, height + 10, 0, len(keys0), true, false},
+		// same validator set, poorly signed, fails
+		{keys0, vals0, height + 20, 2, len(keys0), false, false},
+
+		// shift the power a little, works if properly signed
+		{keys0, testKeysToValSet(keys0, 10, 0), height + 30, 1, len(keys0), true, false},
+		// but not on a poor signature
+		{keys0, testKeysToValSet(keys0, 10, 0), height + 40, 2, len(keys0), false, false},
+		// // and not if it was in the past
+		{keys0, testKeysToValSet(keys0, 10, 0), height + 25, 0, len(keys0), false, false},
+
+		// // let's try to adjust to a whole new validator set (we have 5/7 of the votes)
+		// {keys1, vals1, height + 33, 0, len(keys1), true, false},
+
+		// // properly signed but too much change, not allowed (only 7/11 validators known)
+		// {keys2, vals2, height + 50, 0, len(keys2), false, true},
+	}
+
+	for _, c := range cs {
+		signed := testGenSignedHeader(
+			c.keys,
+			c.vals,
+			chainID,
+			c.height,
+			nil,
+			[]byte("bar"),
+			[]byte("params"),
+			[]byte("results"),
+			c.first,
+			c.last,
+		)
+
+		err := vals0.VerifyCommitAny(
+			c.vals,
+			chainID,
+			signed.Commit.BlockID,
+			c.height,
+			signed.Commit,
+		)
+
+		if c.proper {
+			assert.Nil(err, "%d: %+v", c.height, err)
+		} else {
+			assert.NotNil(err, "%d", c.height)
+		}
+	}
+}
+
+func testGenCommit(
+	keys []crypto.PrivKey,
+	header *Header,
+	first, last int,
+) *Commit {
+	var (
+		votes = make([]*Vote, len(keys))
+		vs    = testKeysToValSet(keys, 1, 0)
+	)
+
+	for i := first; i < last && i < len(keys); i++ {
+		vote := testGenVote(vs, header, keys[i])
+		votes[vote.ValidatorIndex] = vote
+	}
+
+	return &Commit{
+		BlockID:    BlockID{Hash: header.Hash()},
+		Precommits: votes,
+	}
+}
+
+func testGenSignedHeader(
+	ks []crypto.PrivKey,
+	vs *ValidatorSet,
+	chainID string,
+	height int64,
+	txs Txs,
+	appHash, consHash, resHash []byte,
+	first, last int,
+) SignedHeader {
+	header := &Header{
+		ChainID:         chainID,
+		Height:          height,
+		Time:            time.Now(),
+		NumTxs:          int64(len(txs)),
+		TotalTxs:        int64(len(txs)),
+		ValidatorsHash:  vs.Hash(),
+		DataHash:        txs.Hash(),
+		AppHash:         appHash,
+		ConsensusHash:   consHash,
+		LastResultsHash: resHash,
+	}
+
+	return SignedHeader{
+		Header: header,
+		Commit: testGenCommit(ks, header, first, last),
+	}
+}
+
+func testGenValKeys(n int) []crypto.PrivKey {
+	ks := make([]crypto.PrivKey, n)
+
+	for i := range ks {
+		ks[i] = crypto.GenPrivKeyEd25519().Wrap()
+	}
+
+	return ks
+}
+
+func testGenVote(vs *ValidatorSet, header *Header, key crypto.PrivKey) *Vote {
+	var (
+		addr   = key.PubKey().Address()
+		idx, _ = vs.GetByAddress(addr)
+		vote   = &Vote{
+			BlockID:          BlockID{Hash: header.Hash()},
+			Height:           header.Height,
+			Round:            1,
+			Timestamp:        time.Now().UTC(),
+			Type:             VoteTypePrecommit,
+			ValidatorAddress: addr,
+			ValidatorIndex:   idx,
+		}
+		signBytes = vote.SignBytes(header.ChainID)
+	)
+
+	vote.Signature = key.Sign(signBytes)
+
+	return vote
+}
+
+func testKeysToValSet(ks []crypto.PrivKey, init, inc int64) *ValidatorSet {
+	vs := make([]*Validator, len(ks))
+
+	for i, k := range ks {
+		vs[i] = NewValidator(k.PubKey(), init+int64(i)+inc)
+	}
+
+	return NewValidatorSet(vs)
 }
