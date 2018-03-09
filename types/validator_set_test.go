@@ -383,7 +383,7 @@ func TestValidatorSetVerifyCommitAny(t *testing.T) {
 		assert, _ = assert.New(t), require.New(t)
 		chainID   = cmn.RandStr(36)
 		keys0     = testGenValKeys(5)
-		vals0     = testKeysToValSet(keys0, 20, 0)
+		vals0     = testKeysToValSet(keys0, 10, 0)
 
 		// keys1 = append(keys0, testGenValKeys(2)...)
 		// vals1 = testKeysToValSet(keys1, 10, 0)
@@ -400,19 +400,18 @@ func TestValidatorSetVerifyCommitAny(t *testing.T) {
 		height      int64
 		first, last int  // who actually signs
 		proper      bool // true -> expect no error
-		changed     bool // true -> expect too much change error
 	}{
 		// same validator set, well signed, of course it is okay
-		{keys0, vals0, height + 10, 0, len(keys0), true, false},
+		{keys0, vals0, height + 10, 0, len(keys0), true},
 		// same validator set, poorly signed, fails
-		{keys0, vals0, height + 20, 2, len(keys0), false, false},
+		{keys0, vals0, height + 20, 2, len(keys0), false},
 
 		// shift the power a little, works if properly signed
-		{keys0, testKeysToValSet(keys0, 10, 0), height + 30, 1, len(keys0), true, false},
+		{keys0, vals0, height + 30, 1, len(keys0), true},
 		// but not on a poor signature
-		{keys0, testKeysToValSet(keys0, 10, 0), height + 40, 2, len(keys0), false, false},
+		{keys0, vals0, height + 40, 2, len(keys0), false},
 		// // and not if it was in the past
-		{keys0, testKeysToValSet(keys0, 10, 0), height + 25, 0, len(keys0), false, false},
+		{keys0, vals0, height + 25, 0, len(keys0), false},
 
 		// // let's try to adjust to a whole new validator set (we have 5/7 of the votes)
 		// {keys1, vals1, height + 33, 0, len(keys1), true, false},
@@ -432,7 +431,7 @@ func TestValidatorSetVerifyCommitAny(t *testing.T) {
 			[]byte("params"),
 			[]byte("results"),
 			c.first,
-			c.last,
+			len(c.keys),
 		)
 
 		err := vals0.VerifyCommitAny(
