@@ -371,54 +371,49 @@ func TestValidatorSetVerifyCommit(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-// func (valSet *ValidatorSet) VerifyCommitAny(
-// 	newSet *ValidatorSet,
-// 	chainID string,
-// 	blockID BlockID,
-// 	height int64,
-// 	commit *Commit,
-// ) error {
 func TestValidatorSetVerifyCommitAny(t *testing.T) {
 	var (
 		assert, _ = assert.New(t), require.New(t)
 		chainID   = cmn.RandStr(36)
 		keys0     = testGenValKeys(5)
-		vals0     = testKeysToValSet(keys0, 10, 0)
+		vals0     = testKeysToValSet(keys0, 50, 0)
 
-		// keys1 = append(keys0, testGenValKeys(2)...)
-		// vals1 = testKeysToValSet(keys1, 10, 0)
+		keys1 = append(keys0, testGenValKeys(2)...)
+		vals1 = testKeysToValSet(keys1, 10, 0)
 
-		// keys2 = append(keys1, testGenValKeys(4)...)
-		// vals2 = testKeysToValSet(keys2, 10, 0)
+		keys2 = append(keys1, testGenValKeys(4)...)
+		vals2 = testKeysToValSet(keys2, 10, 0)
 
 		height int64 = 100
 	)
 
 	cs := []struct {
-		keys        []crypto.PrivKey
-		vals        *ValidatorSet
-		height      int64
-		first, last int  // who actually signs
-		proper      bool // true -> expect no error
+		keys   []crypto.PrivKey
+		vals   *ValidatorSet
+		height int64
+		first  int  // who actually signs
+		proper bool // true -> expect no error
 	}{
-		// same validator set, well signed, of course it is okay
-		{keys0, vals0, height + 10, 0, len(keys0), true},
-		// same validator set, poorly signed, fails
-		{keys0, vals0, height + 20, 2, len(keys0), false},
+		// // same validator set, well signed, of course it is okay
+		{keys0, vals0, height + 10, 0, true},
+		// // same validator set, poorly signed, fails
+		{keys0, vals0, height + 20, 2, false},
 
-		// shift the power a little, works if properly signed
-		{keys0, vals0, height + 30, 1, len(keys0), true},
-		// but not on a poor signature
-		{keys0, vals0, height + 40, 2, len(keys0), false},
+		// // shift the power a little, works if properly signed
+		{keys0, vals0, height + 30, 1, true},
+		// // but not on a poor signature
+		{keys0, vals0, height + 40, 2, false},
 		// // and not if it was in the past
-		{keys0, vals0, height + 25, 0, len(keys0), false},
+		{keys0, vals0, height + 25, 0, false},
 
 		// // let's try to adjust to a whole new validator set (we have 5/7 of the votes)
-		// {keys1, vals1, height + 33, 0, len(keys1), true, false},
+		{keys1, vals1, height + 33, 0, true},
 
 		// // properly signed but too much change, not allowed (only 7/11 validators known)
-		// {keys2, vals2, height + 50, 0, len(keys2), false, true},
+		{keys2, vals2, height + 50, 0, false},
 	}
+
+	vals := vals0
 
 	for _, c := range cs {
 		signed := testGenSignedHeader(
@@ -434,7 +429,7 @@ func TestValidatorSetVerifyCommitAny(t *testing.T) {
 			len(c.keys),
 		)
 
-		err := vals0.VerifyCommitAny(
+		err := vals.VerifyCommitAny(
 			c.vals,
 			chainID,
 			signed.Commit.BlockID,
@@ -444,6 +439,8 @@ func TestValidatorSetVerifyCommitAny(t *testing.T) {
 
 		if c.proper {
 			assert.Nil(err, "%d: %+v", c.height, err)
+
+			vals = c.vals
 		} else {
 			assert.NotNil(err, "%d", c.height)
 		}

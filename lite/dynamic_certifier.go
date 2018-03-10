@@ -96,7 +96,7 @@ func (dc *DynamicCertifier) Update(fc FullCommit) error {
 		fc.Validators,
 		chainID,
 		commit.BlockID,
-		height,
+		dc.lastHeight,
 		commit,
 	); err != nil {
 		return liteErr.ErrTooMuchChange()
