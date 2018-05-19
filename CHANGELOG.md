@@ -2,6 +2,9 @@
 
 ## TBD
 
+BREAKING CHANGES:
+- [p2p] Change the KDF to HKDF from SHA256 & RIPEMD160 for better security.
+
 FEATURES:
 - [node] added metrics (served under /metrics using a Prometheus client; disabled by default)
 
