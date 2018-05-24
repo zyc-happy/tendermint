@@ -146,12 +146,15 @@
   packages = ["."]
   revision = "c2353362d570a7bfa228149c62842019201cfb71"
   version = "v1.8.0"
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
 
 [[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
   revision = "c12348ce28de40eed0136aa2b644d0ee0650e56c"
   version = "v1.0.1"
+=======
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   branch = "master"
@@ -284,7 +287,11 @@
     "leveldb/table",
     "leveldb/util"
   ]
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   revision = "0d5a0ceb10cf9ab89fdd744cc8c50a83134f6697"
+=======
+  revision = "5d6fca44a948d2be89a9702de7717f0168403d3d"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   name = "github.com/tendermint/abci"
@@ -310,10 +317,27 @@
   revision = "d8387025d2b9d158cf4efb07e7ebf814bcce2057"
 
 [[projects]]
+  branch = "develop"
   name = "github.com/tendermint/go-amino"
   packages = ["."]
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   revision = "2106ca61d91029c931fd54968c2bb02dc96b1412"
   version = "0.10.1"
+=======
+  revision = "50745aab48d8a16d05a4b4b4ab2257ed09ac10c5"
+
+[[projects]]
+  branch = "develop"
+  name = "github.com/tendermint/go-crypto"
+  packages = ["."]
+  revision = "f0b1f6e8ac66cfedc0ea003ef8ffbe00a17925c7"
+
+[[projects]]
+  name = "github.com/tendermint/go-wire"
+  packages = ["."]
+  revision = "ed62928576cfcaf887209dc96142cd79cdfff389"
+  version = "0.9.9"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   name = "github.com/tendermint/tmlibs"
@@ -329,8 +353,13 @@
     "merkle",
     "test"
   ]
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   revision = "692f1d86a6e2c0efa698fd1e4541b68c74ffaf38"
   version = "v0.8.4"
+=======
+  revision = "d970af87248a4e162590300dbb74e102183a417d"
+  version = "v0.8.3"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   branch = "master"
@@ -351,7 +380,11 @@
     "ripemd160",
     "salsa20/salsa"
   ]
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
+=======
+  revision = "75e913eb8a8e3d31a97b216de09de106a7b07681"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   branch = "master"
@@ -365,16 +398,25 @@
     "internal/timeseries",
     "trace"
   ]
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   revision = "afe8f62b1d6bbd81f31868121a50b06d8188e1f9"
+=======
+  revision = "9ef9f5bb98a1fdc41f8cf6c250a4404b4085e389"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   packages = [
     "cpu",
     "unix"
   ]
   revision = "ad87a3a340fa7f3bed189293fbfa7a9b7e021ae1"
+=======
+  packages = ["unix"]
+  revision = "77b0e4315053a57ed2962443614bdb28db152054"
+>>>>>>> Add xchacha20poly1305 to secret connection.
 
 [[projects]]
   name = "golang.org/x/text"
@@ -400,7 +442,7 @@
 [[projects]]
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
-  revision = "7fd901a49ba6a7f87732eb344f6e3c5b19d1b200"
+  revision = "694d95ba50e67b2e363f3483057db5d4910c18f9"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -435,6 +477,10 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
+<<<<<<< ad392e1d70b141a9a9b3581f059388ce6d6eb19f
   inputs-digest = "9f647743538a92cc0babe1ca2187f7b4ee9c1925edb2737297b4a7b72448aff0"
+=======
+  inputs-digest = "1d0c1a3870072772a6203366ee03066854a23e01962998f534d7d4b80309884e"
+>>>>>>> Add xchacha20poly1305 to secret connection.
   solver-name = "gps-cdcl"
   solver-version = 1
