@@ -247,6 +247,41 @@ func TestConnIDFilter(t *testing.T) {
 	assertNoPeersAfterTimeout(t, s2, 400*time.Millisecond)
 }
 
+func TestConnIPFilter(t *testing.T) {
+	s1 := MakeSwitch(config, 1, "testing", "123.123.123", initSwitchFunc)
+	s2 := MakeSwitch(config, 1, "testing", "123.123.123", initSwitchFunc)
+	defer s1.Stop()
+	defer s2.Stop()
+
+	c1, c2 := conn.NetPipe()
+
+	s1.SetIPFilter(func(ip net.IP) error {
+		if s2.nodeInfo.NetAddress().IP.Equal(ip) {
+			return fmt.Errorf("Error: pipe is blacklisted")
+		}
+		return nil
+	})
+
+	s2.SetIPFilter(func(ip net.IP) error {
+		if s1.nodeInfo.NetAddress().IP.Equal(ip) {
+			return fmt.Errorf("Error: pipe is blacklisted")
+		}
+		return nil
+	})
+
+	go func() {
+		err := s1.addPeerWithConnection(c1)
+		assert.NotNil(t, err, "expected error")
+	}()
+	go func() {
+		err := s2.addPeerWithConnection(c2)
+		assert.NotNil(t, err, "expected error")
+	}()
+
+	assertNoPeersAfterTimeout(t, s1, 400*time.Millisecond)
+	assertNoPeersAfterTimeout(t, s2, 400*time.Millisecond)
+}
+
 func TestSwitchStopsNonPersistentPeerOnError(t *testing.T) {
 	assert, require := assert.New(t), require.New(t)
 

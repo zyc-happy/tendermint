@@ -70,6 +70,7 @@ type Switch struct {
 
 	filterConnByAddr func(net.Addr) error
 	filterConnByID   func(ID) error
+	filterConnByIP   func(net.IP) error
 
 	rng *cmn.Rand // seed for randomizing dial times and orders
 }
@@ -432,7 +433,8 @@ func (sw *Switch) randomSleep(interval time.Duration) {
 //------------------------------------------------------------------------------------
 // Connection filtering
 
-// FilterConnByAddr returns an error if connecting to the given address is forbidden.
+// FilterConnByAddr returns an error if connecting to the given address is
+// forbidden.
 func (sw *Switch) FilterConnByAddr(addr net.Addr) error {
 	if sw.filterConnByAddr != nil {
 		return sw.filterConnByAddr(addr)
@@ -440,13 +442,24 @@ func (sw *Switch) FilterConnByAddr(addr net.Addr) error {
 	return nil
 }
 
-// FilterConnByID returns an error if connecting to the given peer ID is forbidden.
+// FilterConnByID returns an error if connecting to the given peer ID is
+// forbidden.
 func (sw *Switch) FilterConnByID(id ID) error {
 	if sw.filterConnByID != nil {
 		return sw.filterConnByID(id)
 	}
 	return nil
 
+}
+
+// FilterConnByIP returns an error if connection to the given peer IP is
+// forbidden.
+func (sw *Switch) FilterConnByIP(ip net.IP) error {
+	if sw.filterConnByIP == nil {
+		return nil
+	}
+
+	return sw.filterConnByIP(ip)
 }
 
 // SetAddrFilter sets the function for filtering connections by address.
@@ -457,6 +470,11 @@ func (sw *Switch) SetAddrFilter(f func(net.Addr) error) {
 // SetIDFilter sets the function for filtering connections by peer ID.
 func (sw *Switch) SetIDFilter(f func(ID) error) {
 	sw.filterConnByID = f
+}
+
+// SetIPFilter sets the function for filtering connections by peer IP.
+func (sw *Switch) SetIPFilter(f func(net.IP) error) {
+	sw.filterConnByIP = f
 }
 
 //------------------------------------------------------------------------------------
@@ -582,8 +600,13 @@ func (sw *Switch) addPeer(pc peerConn) error {
 		return ErrSwitchDuplicatePeerIP{pc.RemoteIP()}
 	}
 
-	// Filter peer against ID white list
+	// Filter peer against ID white list.
 	if err := sw.FilterConnByID(peerID); err != nil {
+		return err
+	}
+
+	// Filter peer against IP whitelist.
+	if err := sw.FilterConnByIP(pc.RemoteIP()); err != nil {
 		return err
 	}
 

@@ -314,6 +314,20 @@ func NewNode(config *cfg.Config,
 			}
 			return nil
 		})
+		sw.SetIPFilter(func(ip net.IP) error {
+			resQuery, err := proxyApp.Query().QuerySync(
+				abci.RequestQuery{
+					Path: cmn.Fmt("/p2p/filter/ip/%s", ip.String()),
+				},
+			)
+			if err != nil {
+				return err
+			}
+			if resQuery.IsErr() {
+				return fmt.Errorf("Error querying abci app: %v", resQuery)
+			}
+			return nil
+		})
 	}
 
 	eventBus := types.NewEventBus()
