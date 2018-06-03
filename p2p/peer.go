@@ -10,7 +10,6 @@ import (
 	cmn "github.com/tendermint/tmlibs/common"
 	"github.com/tendermint/tmlibs/log"
 
-	"github.com/tendermint/tendermint/config"
 	tmconn "github.com/tendermint/tendermint/p2p/conn"
 )
 
@@ -35,50 +34,6 @@ type Peer interface {
 }
 
 //----------------------------------------------------------
-
-// peerConn contains the raw connection and its config.
-type peerConn struct {
-	outbound   bool
-	persistent bool
-	config     *config.P2PConfig
-	conn       net.Conn // source connection
-	ip         net.IP
-}
-
-// ID only exists for SecretConnection.
-// NOTE: Will panic if conn is not *SecretConnection.
-func (pc peerConn) ID() ID {
-	return PubKeyToID(pc.conn.(*tmconn.SecretConnection).RemotePubKey())
-}
-
-// Return the IP from the connection RemoteAddr
-func (pc peerConn) RemoteIP() net.IP {
-	if pc.ip != nil {
-		return pc.ip
-	}
-
-	// In test cases a conn could not be present at all or be an in-memory
-	// implementation where we want to return a fake ip.
-	if pc.conn == nil || pc.conn.RemoteAddr().String() == "pipe" {
-		pc.ip = net.IP{172, 16, 0, byte(atomic.AddUint32(&testIPSuffix, 1))}
-
-		return pc.ip
-	}
-
-	host, _, err := net.SplitHostPort(pc.conn.RemoteAddr().String())
-	if err != nil {
-		panic(err)
-	}
-
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		panic(err)
-	}
-
-	pc.ip = ips[0]
-
-	return pc.ip
-}
 
 // peer implements Peer.
 //
@@ -106,6 +61,7 @@ func newPeer(
 	reactorsByCh map[byte]Reactor,
 	chDescs []*tmconn.ChannelDescriptor,
 	onPeerError func(Peer, interface{}),
+	mconfig tmconn.MConnConfig,
 ) *peer {
 	p := &peer{
 		peerConn: pc,
@@ -120,90 +76,11 @@ func newPeer(
 		reactorsByCh,
 		chDescs,
 		onPeerError,
-		pc.config.MConfig,
+		mconfig,
 	)
 	p.BaseService = *cmn.NewBaseService(nil, "Peer", p)
 
 	return p
-}
-
-func newOutboundPeerConn(
-	addr *NetAddress,
-	config *config.P2PConfig,
-	persistent bool,
-	ourNodePrivKey crypto.PrivKey,
-) (peerConn, error) {
-	conn, err := dial(addr, config)
-	if err != nil {
-		return peerConn{}, cmn.ErrorWrap(err, "Error creating peer")
-	}
-
-	pc, err := newPeerConn(conn, config, true, persistent, ourNodePrivKey)
-	if err != nil {
-		if cerr := conn.Close(); cerr != nil {
-			return peerConn{}, cmn.ErrorWrap(err, cerr.Error())
-		}
-		return peerConn{}, err
-	}
-
-	// ensure dialed ID matches connection ID
-	if addr.ID != pc.ID() {
-		if cerr := conn.Close(); cerr != nil {
-			return peerConn{}, cmn.ErrorWrap(err, cerr.Error())
-		}
-		return peerConn{}, ErrSwitchAuthenticationFailure{addr, pc.ID()}
-	}
-
-	return pc, nil
-}
-
-func newInboundPeerConn(
-	conn net.Conn,
-	config *config.P2PConfig,
-	ourNodePrivKey crypto.PrivKey,
-) (peerConn, error) {
-
-	// TODO: issue PoW challenge
-
-	return newPeerConn(conn, config, false, false, ourNodePrivKey)
-}
-
-func newPeerConn(
-	rawConn net.Conn,
-	cfg *config.P2PConfig,
-	outbound, persistent bool,
-	ourNodePrivKey crypto.PrivKey,
-) (pc peerConn, err error) {
-	conn := rawConn
-
-	// Fuzz connection
-	if cfg.TestFuzz {
-		// so we have time to do peer handshakes and get set up
-		conn = FuzzConnAfterFromConfig(conn, 10*time.Second, cfg.TestFuzzConfig)
-	}
-
-	// Set deadline for secret handshake
-	dl := time.Now().Add(cfg.HandshakeTimeout)
-	if err := conn.SetDeadline(dl); err != nil {
-		return pc, cmn.ErrorWrap(
-			err,
-			"Error setting deadline while encrypting connection",
-		)
-	}
-
-	// Encrypt connection
-	conn, err = tmconn.MakeSecretConnection(conn, ourNodePrivKey)
-	if err != nil {
-		return pc, cmn.ErrorWrap(err, "Error creating peer")
-	}
-
-	// Only the information we already have
-	return peerConn{
-		config:     cfg,
-		outbound:   outbound,
-		persistent: persistent,
-		conn:       conn,
-	}, nil
 }
 
 //---------------------------------------------------
@@ -304,16 +181,109 @@ func (p *peer) hasChannel(chID byte) bool {
 	// but could be helpful while the feature is new
 	p.Logger.Debug(
 		"Unknown channel for peer",
-		"channel",
-		chID,
-		"channels",
-		p.channels,
+		"channel", chID,
+		"channels", p.channels,
 	)
 	return false
 }
 
+// Addr returns peer's remote network address.
+func (p *peer) Addr() net.Addr {
+	return p.peerConn.conn.RemoteAddr()
+}
+
+// CanSend returns true if the send queue is not full, false otherwise.
+func (p *peer) CanSend(chID byte) bool {
+	if !p.IsRunning() {
+		return false
+	}
+	return p.mconn.CanSend(chID)
+}
+
+// String representation.
+func (p *peer) String() string {
+	if p.outbound {
+		return fmt.Sprintf("Peer{%v %v out}", p.mconn, p.ID())
+	}
+
+	return fmt.Sprintf("Peer{%v %v in}", p.mconn, p.ID())
+}
+
 //---------------------------------------------------
 // methods used by the Switch
+
+// peerConn contains the raw connection and its config.
+type peerConn struct {
+	outbound   bool
+	persistent bool
+	conn       net.Conn // source connection
+	ip         net.IP
+}
+
+func newPeerConn(
+	rawConn net.Conn,
+	timeout time.Duration,
+	outbound, persistent bool,
+	ourNodePrivKey crypto.PrivKey,
+) (pc peerConn, err error) {
+	conn := rawConn
+
+	// Set deadline for secret handshake
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return pc, cmn.ErrorWrap(
+			err,
+			"Error setting deadline while encrypting connection",
+		)
+	}
+
+	// Encrypt connection
+	conn, err = tmconn.MakeSecretConnection(conn, ourNodePrivKey)
+	if err != nil {
+		return pc, cmn.ErrorWrap(err, "Error creating peer")
+	}
+
+	// Only the information we already have
+	return peerConn{
+		outbound:   outbound,
+		persistent: persistent,
+		conn:       conn,
+	}, nil
+}
+
+// ID only exists for SecretConnection.
+// NOTE: Will panic if conn is not *SecretConnection.
+func (pc peerConn) ID() ID {
+	return PubKeyToID(pc.conn.(*tmconn.SecretConnection).RemotePubKey())
+}
+
+// Return the IP from the connection RemoteAddr
+func (pc peerConn) RemoteIP() net.IP {
+	if pc.ip != nil {
+		return pc.ip
+	}
+
+	// In test cases a conn could not be present at all or be an in-memory
+	// implementation where we want to return a fake ip.
+	if pc.conn == nil || pc.conn.RemoteAddr().String() == "pipe" {
+		pc.ip = net.IP{172, 16, 0, byte(atomic.AddUint32(&testIPSuffix, 1))}
+
+		return pc.ip
+	}
+
+	host, _, err := net.SplitHostPort(pc.conn.RemoteAddr().String())
+	if err != nil {
+		panic(err)
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		panic(err)
+	}
+
+	pc.ip = ips[0]
+
+	return pc.ip
+}
 
 // CloseConn should be called by the Switch if the peer was created but never
 // started.
@@ -360,37 +330,66 @@ func (pc *peerConn) HandshakeTimeout(
 	return peerNodeInfo, nil
 }
 
-// Addr returns peer's remote network address.
-func (p *peer) Addr() net.Addr {
-	return p.peerConn.conn.RemoteAddr()
+func newInboundPeerConn(
+	conn net.Conn,
+	handshakeTimeout time.Duration,
+	ourNodePrivKey crypto.PrivKey,
+) (peerConn, error) {
+
+	// TODO: issue PoW challenge
+
+	return newPeerConn(conn, handshakeTimeout, false, false, ourNodePrivKey)
 }
 
-// CanSend returns true if the send queue is not full, false otherwise.
-func (p *peer) CanSend(chID byte) bool {
-	if !p.IsRunning() {
-		return false
-	}
-	return p.mconn.CanSend(chID)
-}
-
-// String representation.
-func (p *peer) String() string {
-	if p.outbound {
-		return fmt.Sprintf("Peer{%v %v out}", p.mconn, p.ID())
+func newOutboundPeerConn(
+	addr *NetAddress,
+	dialTimeout, handshakeTimeout time.Duration,
+	dialFail, persistent bool,
+	ourNodePrivKey crypto.PrivKey,
+) (peerConn, error) {
+	conn, err := dial(addr, dialTimeout, dialFail)
+	if err != nil {
+		return peerConn{}, cmn.ErrorWrap(err, "Error creating peer")
 	}
 
-	return fmt.Sprintf("Peer{%v %v in}", p.mconn, p.ID())
+	pc, err := newPeerConn(
+		conn,
+		handshakeTimeout,
+		true,
+		persistent,
+		ourNodePrivKey,
+	)
+	if err != nil {
+		if cerr := conn.Close(); cerr != nil {
+			return peerConn{}, cmn.ErrorWrap(err, cerr.Error())
+		}
+		return peerConn{}, err
+	}
+
+	// ensure dialed ID matches connection ID
+	if addr.ID != pc.ID() {
+		if cerr := conn.Close(); cerr != nil {
+			return peerConn{}, cmn.ErrorWrap(err, cerr.Error())
+		}
+		return peerConn{}, ErrSwitchAuthenticationFailure{addr, pc.ID()}
+	}
+
+	return pc, nil
 }
 
 //------------------------------------------------------------------
 // helper funcs
 
-func dial(addr *NetAddress, cfg *config.P2PConfig) (net.Conn, error) {
-	if cfg.TestDialFail {
-		return nil, fmt.Errorf("dial err (peerConfig.DialFail == true)")
+func dial(
+	addr *NetAddress,
+	timeout time.Duration,
+	fail bool,
+) (net.Conn, error) {
+	if fail {
+		return nil, fmt.Errorf("dial err (fail == true)")
 	}
 
-	conn, err := addr.DialTimeout(cfg.DialTimeout)
+	conn, err := addr.DialTimeout(timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +404,6 @@ func createMConnection(
 	onPeerError func(Peer, interface{}),
 	config tmconn.MConnConfig,
 ) *tmconn.MConnection {
-
 	onReceive := func(chID byte, msgBytes []byte) {
 		reactor := reactorsByCh[chID]
 		if reactor == nil {

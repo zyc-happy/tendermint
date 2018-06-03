@@ -21,16 +21,6 @@ import (
 	"github.com/tendermint/tendermint/p2p/conn"
 )
 
-var (
-	cfg *config.P2PConfig
-)
-
-func init() {
-	cfg = config.DefaultP2PConfig()
-	cfg.PexReactor = true
-	cfg.AllowDuplicateIP = true
-}
-
 func TestPEXReactorBasic(t *testing.T) {
 	r, book := createReactor(&PEXReactorConfig{})
 	defer teardownReactor(book)
@@ -82,7 +72,7 @@ func TestPEXReactorRunning(t *testing.T) {
 
 	// create switches
 	for i := 0; i < N; i++ {
-		switches[i] = p2p.MakeSwitch(cfg, i, "testing", "123.123.123", func(i int, sw *p2p.Switch) *p2p.Switch {
+		switches[i] = p2p.MakeSwitch(*config.TestP2PConfig(), i, "testing", "123.123.123", func(i int, sw *p2p.Switch) *p2p.Switch {
 			books[i] = NewAddrBook(filepath.Join(dir, fmt.Sprintf("addrbook%d.json", i)), false)
 			books[i].SetLogger(logger.With("pex", i))
 			sw.SetAddrBook(books[i])
@@ -210,7 +200,7 @@ func TestPEXReactorUsesSeedsIfNeeded(t *testing.T) {
 
 	// 1. create seed
 	seed := p2p.MakeSwitch(
-		cfg,
+		*config.TestP2PConfig(),
 		0,
 		"127.0.0.1",
 		"123.123.123",
@@ -240,7 +230,7 @@ func TestPEXReactorUsesSeedsIfNeeded(t *testing.T) {
 
 	// 2. create usual peer with only seed configured.
 	peer := p2p.MakeSwitch(
-		cfg,
+		*config.TestP2PConfig(),
 		1,
 		"127.0.0.1",
 		"123.123.123",
@@ -448,7 +438,7 @@ func teardownReactor(book *addrBook) {
 }
 
 func createSwitchAndAddReactors(reactors ...p2p.Reactor) *p2p.Switch {
-	sw := p2p.MakeSwitch(cfg, 0, "127.0.0.1", "123.123.123", func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
+	sw := p2p.MakeSwitch(*config.TestP2PConfig(), 0, "127.0.0.1", "123.123.123", func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
 	sw.SetLogger(log.TestingLogger())
 	for _, r := range reactors {
 		sw.AddReactor(r.String(), r)

@@ -38,7 +38,7 @@ func TestByzantine(t *testing.T) {
 	switches := make([]*p2p.Switch, N)
 	p2pLogger := logger.With("module", "p2p")
 	for i := 0; i < N; i++ {
-		switches[i] = p2p.NewSwitch(config.P2P)
+		switches[i] = p2p.NewSwitch(*config.P2P)
 		switches[i].SetLogger(p2pLogger.With("validator", i))
 	}
 
@@ -93,7 +93,7 @@ func TestByzantine(t *testing.T) {
 		}
 	}()
 
-	p2p.MakeConnectedSwitches(config.P2P, N, func(i int, s *p2p.Switch) *p2p.Switch {
+	p2p.MakeConnectedSwitches(*config.P2P, N, func(i int, s *p2p.Switch) *p2p.Switch {
 		// ignore new switch s, we already made ours
 		switches[i].AddReactor("CONSENSUS", reactors[i])
 		return switches[i]

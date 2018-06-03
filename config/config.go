@@ -311,9 +311,6 @@ type P2PConfig struct {
 	// Testing params.
 	// Force dial to fail
 	TestDialFail bool `mapstructure:"test_dial_fail"`
-	// FUzz connection
-	TestFuzz       bool            `mapstructure:"test_fuzz"`
-	TestFuzzConfig *FuzzConnConfig `mapstructure:"test_fuzz_config"`
 }
 
 // DefaultP2PConfig returns a default configuration for the peer-to-peer layer
@@ -334,8 +331,6 @@ func DefaultP2PConfig() *P2PConfig {
 		DialTimeout:             3 * time.Second,
 		MConfig:                 tmconn.DefaultMConnConfig(),
 		TestDialFail:            false,
-		TestFuzz:                false,
-		TestFuzzConfig:          DefaultFuzzConnConfig(),
 	}
 }
 

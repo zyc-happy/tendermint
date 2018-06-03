@@ -55,7 +55,7 @@ type AddrBook interface {
 type Switch struct {
 	cmn.BaseService
 
-	config       *config.P2PConfig
+	config       config.P2PConfig
 	listeners    []Listener
 	reactors     map[string]Reactor
 	chDescs      []*conn.ChannelDescriptor
@@ -71,10 +71,13 @@ type Switch struct {
 	filterConnByID   func(ID) error
 
 	rng *cmn.Rand // seed for randomizing dial times and orders
+
+	dialTimeout      time.Duration
+	handshakeTimeout time.Duration
 }
 
 // NewSwitch creates a new Switch with the given config.
-func NewSwitch(cfg *config.P2PConfig) *Switch {
+func NewSwitch(cfg config.P2PConfig) *Switch {
 	sw := &Switch{
 		config:       cfg,
 		reactors:     make(map[string]Reactor),
@@ -92,6 +95,9 @@ func NewSwitch(cfg *config.P2PConfig) *Switch {
 	sw.config.MConfig.SendRate = cfg.SendRate
 	sw.config.MConfig.RecvRate = cfg.RecvRate
 	sw.config.MConfig.MaxPacketMsgPayloadSize = cfg.MaxPacketMsgPayloadSize
+
+	sw.dialTimeout = cfg.DialTimeout
+	sw.handshakeTimeout = cfg.HandshakeTimeout
 
 	sw.BaseService = *cmn.NewBaseService(nil, "P2P Switch", sw)
 	return sw
@@ -411,12 +417,13 @@ func (sw *Switch) DialPeersAsync(addrBook AddrBook, peers []string, persistent b
 	return nil
 }
 
-// DialPeerWithAddress dials the given peer and runs sw.addPeer if it connects and authenticates successfully.
-// If `persistent == true`, the switch will always try to reconnect to this peer if the connection ever fails.
+// DialPeerWithAddress dials the given peer and runs sw.addPeer if it connects
+// and authenticates successfully. If `persistent == true`, the switch will
+// always try to reconnect to this peer if the connection ever fails.
 func (sw *Switch) DialPeerWithAddress(addr *NetAddress, persistent bool) error {
 	sw.dialing.Set(string(addr.ID), addr)
 	defer sw.dialing.Delete(string(addr.ID))
-	return sw.addOutboundPeerWithConfig(addr, sw.config, persistent)
+	return sw.addOutboundPeer(addr, sw.dialTimeout, false, persistent)
 }
 
 // sleep for interval plus some random amount of ms on [0, dialRandomizerIntervalMilliseconds]
@@ -473,7 +480,7 @@ func (sw *Switch) listenerRoutine(l Listener) {
 		}
 
 		// New inbound connection!
-		err := sw.addInboundPeerWithConfig(inConn, sw.config)
+		err := sw.addInboundPeer(inConn)
 		if err != nil {
 			sw.Logger.Info("Ignoring inbound connection: error while adding peer", "address", inConn.RemoteAddr().String(), "err", err)
 			continue
@@ -483,11 +490,8 @@ func (sw *Switch) listenerRoutine(l Listener) {
 	// cleanup
 }
 
-func (sw *Switch) addInboundPeerWithConfig(
-	conn net.Conn,
-	config *config.P2PConfig,
-) error {
-	peerConn, err := newInboundPeerConn(conn, config, sw.nodeKey.PrivKey)
+func (sw *Switch) addInboundPeer(conn net.Conn) error {
+	peerConn, err := newInboundPeerConn(conn, sw.handshakeTimeout, sw.nodeKey.PrivKey)
 	if err != nil {
 		conn.Close() // peer is nil
 		return err
@@ -505,15 +509,17 @@ func (sw *Switch) addInboundPeerWithConfig(
 // if dialing fails, start the reconnect loop. If handhsake fails, its over.
 // If peer is started succesffuly, reconnectLoop will start when
 // StopPeerForError is called
-func (sw *Switch) addOutboundPeerWithConfig(
+func (sw *Switch) addOutboundPeer(
 	addr *NetAddress,
-	config *config.P2PConfig,
-	persistent bool,
+	dialTimeout time.Duration,
+	dialFail, persistent bool,
 ) error {
 	sw.Logger.Info("Dialing peer", "address", addr)
 	peerConn, err := newOutboundPeerConn(
 		addr,
-		config,
+		sw.dialTimeout,
+		sw.handshakeTimeout,
+		dialFail,
 		persistent,
 		sw.nodeKey.PrivKey,
 	)
@@ -545,7 +551,7 @@ func (sw *Switch) addPeer(pc peerConn) error {
 	}
 
 	// Exchange NodeInfo on the conn
-	peerNodeInfo, err := pc.HandshakeTimeout(sw.nodeInfo, time.Duration(sw.config.HandshakeTimeout))
+	peerNodeInfo, err := pc.HandshakeTimeout(sw.nodeInfo, time.Duration(sw.handshakeTimeout))
 	if err != nil {
 		return err
 	}
@@ -600,7 +606,14 @@ func (sw *Switch) addPeer(pc peerConn) error {
 		return err
 	}
 
-	peer := newPeer(pc, peerNodeInfo, sw.reactorsByCh, sw.chDescs, sw.StopPeerForError)
+	peer := newPeer(
+		pc,
+		peerNodeInfo,
+		sw.reactorsByCh,
+		sw.chDescs,
+		sw.StopPeerForError,
+		sw.config.MConfig,
+	)
 	peer.SetLogger(sw.Logger.With("peer", addr))
 
 	peer.Logger.Info("Successful handshake with peer", "peerNodeInfo", peerNodeInfo)

@@ -13,7 +13,6 @@ import (
 	cmn "github.com/tendermint/tmlibs/common"
 	"github.com/tendermint/tmlibs/log"
 
-	"github.com/tendermint/tendermint/config"
 	tmconn "github.com/tendermint/tendermint/p2p/conn"
 )
 
@@ -23,11 +22,11 @@ func TestPeerBasic(t *testing.T) {
 	assert, require := assert.New(t), require.New(t)
 
 	// simulate remote peer
-	rp := &remotePeer{PrivKey: crypto.GenPrivKeyEd25519(), Config: cfg}
+	rp := &remotePeer{PrivKey: crypto.GenPrivKeyEd25519()}
 	rp.Start()
 	defer rp.Stop()
 
-	p, err := createOutboundPeerAndPerformHandshake(rp.Addr(), cfg)
+	p, err := createOutboundPeerAndPerformHandshake(rp.Addr())
 	require.Nil(err)
 
 	err = p.Start()
@@ -46,14 +45,12 @@ func TestPeerBasic(t *testing.T) {
 func TestPeerSend(t *testing.T) {
 	assert, require := assert.New(t), require.New(t)
 
-	config := cfg
-
 	// simulate remote peer
-	rp := &remotePeer{PrivKey: crypto.GenPrivKeyEd25519(), Config: config}
+	rp := &remotePeer{PrivKey: crypto.GenPrivKeyEd25519()}
 	rp.Start()
 	defer rp.Stop()
 
-	p, err := createOutboundPeerAndPerformHandshake(rp.Addr(), config)
+	p, err := createOutboundPeerAndPerformHandshake(rp.Addr())
 	require.Nil(err)
 
 	err = p.Start()
@@ -65,13 +62,20 @@ func TestPeerSend(t *testing.T) {
 	assert.True(p.Send(testCh, []byte("Asylum")))
 }
 
-func createOutboundPeerAndPerformHandshake(addr *NetAddress, config *config.P2PConfig) (*peer, error) {
+func createOutboundPeerAndPerformHandshake(addr *NetAddress) (*peer, error) {
 	chDescs := []*tmconn.ChannelDescriptor{
 		{ID: testCh, Priority: 1},
 	}
 	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor(chDescs, true)}
 	pk := crypto.GenPrivKeyEd25519()
-	pc, err := newOutboundPeerConn(addr, config, false, pk)
+	pc, err := newOutboundPeerConn(
+		addr,
+		10*time.Millisecond,
+		10*time.Millisecond,
+		false,
+		false,
+		pk,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -86,14 +90,20 @@ func createOutboundPeerAndPerformHandshake(addr *NetAddress, config *config.P2PC
 		return nil, err
 	}
 
-	p := newPeer(pc, nodeInfo, reactorsByCh, chDescs, func(p Peer, r interface{}) {})
+	p := newPeer(
+		pc,
+		nodeInfo,
+		reactorsByCh,
+		chDescs,
+		func(p Peer, r interface{}) {},
+		tmconn.DefaultMConnConfig(),
+	)
 	p.SetLogger(log.TestingLogger().With("peer", addr))
 	return p, nil
 }
 
 type remotePeer struct {
 	PrivKey    crypto.PrivKey
-	Config     *config.P2PConfig
 	addr       *NetAddress
 	quit       chan struct{}
 	channels   cmn.HexBytes
@@ -138,7 +148,7 @@ func (rp *remotePeer) accept(l net.Listener) {
 			golog.Fatalf("Failed to accept conn: %+v", err)
 		}
 
-		pc, err := newInboundPeerConn(conn, rp.Config, rp.PrivKey)
+		pc, err := newInboundPeerConn(conn, 10*time.Millisecond, rp.PrivKey)
 		if err != nil {
 			golog.Fatalf("Failed to create a peer: %+v", err)
 		}

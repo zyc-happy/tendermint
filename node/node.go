@@ -252,7 +252,7 @@ func NewNode(config *cfg.Config,
 
 	p2pLogger := logger.With("module", "p2p")
 
-	sw := p2p.NewSwitch(config.P2P)
+	sw := p2p.NewSwitch(*config.P2P)
 	sw.SetLogger(p2pLogger)
 	sw.AddReactor("MEMPOOL", mempoolReactor)
 	sw.AddReactor("BLOCKCHAIN", bcReactor)

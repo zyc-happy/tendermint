@@ -44,7 +44,7 @@ func makeAndConnectEvidenceReactors(config *cfg.Config, stateDBs []dbm.DB) []*Ev
 		reactors[i].SetLogger(logger.With("validator", i))
 	}
 
-	p2p.MakeConnectedSwitches(config.P2P, N, func(i int, s *p2p.Switch) *p2p.Switch {
+	p2p.MakeConnectedSwitches(*config.P2P, N, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("EVIDENCE", reactors[i])
 		return s
 
