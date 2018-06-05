@@ -22,12 +22,18 @@ func createTestMConnection(conn net.Conn) *MConnection {
 	return c
 }
 
-func createMConnectionWithCallbacks(conn net.Conn, onReceive func(chID byte, msgBytes []byte), onError func(r interface{})) *MConnection {
+func createMConnectionWithCallbacks(
+	conn net.Conn,
+	onReceive func(chID byte, msgBytes []byte),
+	onError func(r interface{}),
+) *MConnection {
 	cfg := DefaultMConnConfig()
 	cfg.PingInterval = 90 * time.Millisecond
 	cfg.PongTimeout = 45 * time.Millisecond
-	chDescs := []*ChannelDescriptor{&ChannelDescriptor{ID: 0x01, Priority: 1, SendQueueCapacity: 1}}
-	c := NewMConnectionWithConfig(conn, chDescs, onReceive, onError, cfg)
+	chDescs := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 1},
+	}
+	c := New(conn, chDescs, onReceive, onError, cfg)
 	c.SetLogger(log.TestingLogger())
 	return c
 }
@@ -336,7 +342,7 @@ func newClientAndServerConnsForReadErrors(t *testing.T, chOnErr chan struct{}) (
 		{ID: 0x01, Priority: 1, SendQueueCapacity: 1},
 		{ID: 0x02, Priority: 1, SendQueueCapacity: 1},
 	}
-	mconnClient := NewMConnection(client, chDescs, onReceive, onError)
+	mconnClient := New(client, chDescs, onReceive, onError, DefaultMConnConfig())
 	mconnClient.SetLogger(log.TestingLogger().With("module", "client"))
 	err := mconnClient.Start()
 	require.Nil(t, err)

@@ -418,11 +418,5 @@ func createMConnection(
 		onPeerError(p, r)
 	}
 
-	return tmconn.NewMConnectionWithConfig(
-		conn,
-		chDescs,
-		onReceive,
-		onError,
-		config,
-	)
+	return tmconn.New(conn, chDescs, onReceive, onError, config)
 }
