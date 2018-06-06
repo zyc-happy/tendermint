@@ -55,6 +55,31 @@ type peer struct {
 	Data *cmn.CMap
 }
 
+// Check that peer implements Peer.
+var _ Peer = (*peer)(nil)
+
+func newMPeer(
+	conn net.Conn,
+	addr NetAddress,
+	ourInfo NodeInfo,
+	reactorsByCh reactorByChannel,
+	chDescs channelDescriptors,
+	onErrrFn onPeerErrorFunc,
+	mConfig tmconn.MConnConfig,
+	outbound, persistent bool,
+) *peer {
+	p := &peer{
+		Data:     cmn.NewCMap(),
+		channels: nodeInfo.Channels,
+		nodeInfo: nodeInfo,
+	}
+
+	if conn == nil {
+	}
+
+	return p, nil
+}
+
 func newPeer(
 	pc peerConn,
 	nodeInfo NodeInfo,
@@ -218,6 +243,10 @@ type peerConn struct {
 	persistent bool
 	conn       net.Conn // source connection
 	ip         net.IP
+
+	dialFail         bool
+	dialTimeout      time.Duration
+	handshakeTimeout time.Duration
 }
 
 func newPeerConn(
