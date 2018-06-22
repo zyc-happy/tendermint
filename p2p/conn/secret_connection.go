@@ -16,11 +16,12 @@ import (
 	"net"
 	"time"
 
+	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/nacl/box"
 
 	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/xchacha20poly1305"
+	"github.com/tendermint/tendermint/crypto/hkdfchacha20poly1305"
 	cmn "github.com/tendermint/tmlibs/common"
 )
 
@@ -123,7 +124,7 @@ func (sc *SecretConnection) Write(data []byte) (n int, err error) {
 		binary.BigEndian.PutUint32(frame, uint32(chunkLength))
 		copy(frame[dataLenSize:], chunk)
 
-		aead, err := xchacha20poly1305.New(sc.shrSecret[:])
+		aead, err := hkdfchacha20poly1305.New(sc.shrSecret[:])
 		if err != nil {
 			return n, errors.New("Invalid SecretConnection Key")
 		}
@@ -151,7 +152,7 @@ func (sc *SecretConnection) Read(data []byte) (n int, err error) {
 		return
 	}
 
-	aead, err := xchacha20poly1305.New(sc.shrSecret[:])
+	aead, err := hkdfchacha20poly1305.New(sc.shrSecret[:])
 	if err != nil {
 		return n, errors.New("Invalid SecretConnection Key")
 	}
@@ -239,7 +240,11 @@ func shareEphPubKey(conn io.ReadWriteCloser, locEphPub *[32]byte) (remEphPub *[3
 
 func computeSharedSecret(remPubKey, locPrivKey *[32]byte) (shrSecret *[32]byte) {
 	shrSecret = new([32]byte)
-	box.Precompute(shrSecret, remPubKey, locPrivKey)
+	shrKey := new([32]byte)
+	curve25519.ScalarMult(shrKey, locPrivKey, remPubKey)
+	hash := sha256.New
+	hkdf := hkdf.New(hash, shrKey[:], nil, []byte("TENDERMINT_SECRET_CONNECTION_SHARED_SECRET_GEN"))
+	io.ReadFull(hkdf, shrSecret[:])
 	return
 }
 
